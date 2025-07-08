@@ -261,6 +261,7 @@ uae_u32 hrtmem_start, hrtmem2_start, hrtmem3_start, hrtmem_size, hrtmem2_size, h
 uae_u32 hrtmem_end, hrtmem2_end;
 static int hrtmem_rom;
 static int triggered_once;
+
 static bool action_replay_hardreset;
 
 static void hrtmon_unmap_banks (void);
@@ -736,6 +737,21 @@ static uae_u32 REGPARAM2 arram_bget (uaecptr addr)
 		return ar_null(4);
 	addr -= arram_start;
 	addr &= arram_mask;
+	if (armodel == 4)
+	{
+		if (addr == 0xffff3)
+		{
+			//if (readusbavail()) return 0;
+			return 2;
+
+		}
+
+		if (addr == 0xffff1)
+		{
+			//return readusbbyte();
+		}
+
+	}
 	return armemory_ram[addr];
 }
 
@@ -783,6 +799,15 @@ void REGPARAM2 arram_bput (uaecptr addr, uae_u32 b)
 		return;
 	addr -= arram_start;
 	addr &= arram_mask;
+
+	if (armodel == 4)
+	{
+		if (addr == 0xffff1)
+		{
+			//writeusbbyte(b);
+		}
+	}
+
 	armemory_ram[addr] = b;
 }
 
@@ -939,7 +964,10 @@ static void action_replay_go (void)
 {
 	cartridge_enter();
 	hide_cart (0);
-	memcpy (armemory_ram + 0xf000, ar_custom, 2 * 256);
+	if (armodel == 4)
+		memcpy(armemory_ram + 0x3f000, ar_custom, 2 * 256);
+	else
+		memcpy (armemory_ram + 0xf000, ar_custom, 2 * 256);
 	action_replay_flag = ACTION_REPLAY_ACTIVE;
 	set_special (SPCFLAG_ACTION_REPLAY);
 	copyfromamiga (artemp, regs.vbr + 0x7c, 4);
@@ -952,7 +980,10 @@ static void action_replay_go1 (int irq)
 	cartridge_enter();
 	hide_cart (0);
 	action_replay_flag = ACTION_REPLAY_ACTIVE;
-	memcpy (armemory_ram + 0xf000, ar_custom, 2 * 256);
+	if (armodel == 4)
+		memcpy(armemory_ram + 0x3f000, ar_custom, 2 * 256);
+	else
+		memcpy (armemory_ram + 0xf000, ar_custom, 2 * 256);
 	NMI ();
 }
 
@@ -1161,7 +1192,7 @@ int action_replay_freeze (void)
 static void action_replay_chipwrite (void)
 {
 	//write_log (_T("AR CW\n"));
-	if (armodel == 2 || armodel == 3) {
+	if (armodel == 2 || armodel == 3 || armodel == 4) {
 		action_replay_flag = ACTION_REPLAY_DORESET;
 		set_special (SPCFLAG_ACTION_REPLAY);
 	} else if (armodel == 1) {
@@ -1259,7 +1290,7 @@ static uae_u32 action_replay_calculate_checksum (void)
 {
 	uae_u32* checksum_end;
 	uae_u32* checksum_start;
-	uae_u8   checksum_start_offset[] = { 0, 0, 4, 0x7c };
+	uae_u8   checksum_start_offset[] = { 0, 0, 4, 0x7c, 0x7c };
 	uae_u32 checksum = 0;
 	uae_u32 stored_checksum;
 
@@ -1466,6 +1497,7 @@ static void action_replay_setbanks (void)
 		switch (armodel) {
 		case 2:
 		case 3:
+		case 4:
 			chipmem_bank.wput = chipmem_wput_actionreplay23;
 			chipmem_bank.lput = chipmem_lput_actionreplay23;
 			break;
@@ -1699,12 +1731,25 @@ int action_replay_load (void)
 		/* real AR1 RAM location is 0x9fc000-0x9fffff */
 		arram_start = 0x9f0000;
 		arram_size = 0x10000;
-	} else {
+	}
+	else {
 		armodel = ar_rom_file_size / 131072 + 1;
-		arrom_start = 0x400000;
-		arrom_size = armodel == 2 ? 0x20000 : 0x40000;
-		arram_start = 0x440000;
-		arram_size = 0x10000;
+
+		if (armemory_rom[0x7d] == 0xa8)
+		{
+			armodel = 4;
+			arrom_start = 0xa80000;
+			arrom_size = 0x40000;
+			arram_start = 0xac0000;
+			arram_size = 0x100000;
+		}
+		else
+		{
+			arrom_start = 0x400000;
+			arrom_size = armodel == 2 ? 0x20000 : 0x40000;
+			arram_start = 0x440000;
+			arram_size = 0x10000;
+		}
 	}
 	arram_mask = arram_size - 1;
 	arrom_mask = arrom_size - 1;

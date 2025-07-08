@@ -67,6 +67,7 @@ bool no_gui = 0, quit_to_gui = 0;
 bool cloanto_rom = 0;
 bool kickstart_rom = 1;
 bool console_emulation = 0;
+bool prefsdisabled = 0;
 
 struct gui_info gui_data;
 
@@ -1013,6 +1014,9 @@ static void parse_cmdline (int argc, TCHAR **argv)
 			xfree(txt2);
 			xfree(txt);
 			loaded = true;
+		}
+		else if (_tcscmp(argv[i], _T("-np")) == 0) {
+			prefsdisabled = 1;
 		} else if (argv[i][0] == '-' && argv[i][1] != '\0') {
 				const TCHAR *arg = argv[i] + 2;
 				int extra_arg = *arg == '\0';

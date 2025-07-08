@@ -147,6 +147,8 @@ struct customdialogstate cdstate;
 
 static int CustomCreateDialogBox(int templ, HWND hDlg, DLGPROC proc);
 
+extern bool prefsdisabled;
+
 void HtmlHelp(const TCHAR *panel)
 {
 	TCHAR help_file[MAX_DPATH];
@@ -2413,6 +2415,8 @@ void gui_display (int shortcut)
 	struct monconfig *gm = &currprefs.gfx_monitor[0];
 	static int here;
 	int w, h;
+
+	if (prefsdisabled) return;
 
 	if (here)
 		return;
