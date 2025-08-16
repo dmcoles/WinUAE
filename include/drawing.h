@@ -24,7 +24,6 @@ extern int visible_left_border, visible_right_border;
 extern int detected_screen_resolution;
 extern int hsync_end_left_border, hdisplay_left_border, denisehtotal;
 extern int vsync_startline;
-extern bool exthblanken;
 
 #define AMIGA_WIDTH_MAX (754 / 2)
 #define AMIGA_HEIGHT_MAX_PAL (576 / 2)
@@ -183,7 +182,6 @@ void draw_denise_border_line_fast(int gfx_ypos, enum nln_how how, struct linesta
 void draw_denise_border_line_fast_queue(int gfx_ypos, enum nln_how how, struct linestate *ls);
 bool start_draw_denise(void);
 void end_draw_denise(void);
-bool has_draw_denise(void);
 void denise_reset(bool);
 bool denise_update_reg_queued(uae_u16 reg, uae_u16 v, uae_u32 linecnt);
 void denise_store_registers(void);

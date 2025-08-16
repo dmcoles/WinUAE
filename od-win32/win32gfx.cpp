@@ -1,4 +1,3 @@
-﻿/*
 /*
 * UAE - The Un*x Amiga Emulator
 *
@@ -1490,6 +1489,8 @@ void getrtgfilterdata(int monid, struct displayscale *ds)
 
 	int srcratio, dstratio;
 	int srcwidth, srcheight;
+	int outwidth, outheight;
+
 	srcwidth = state->Width;
 	srcheight = state->Height;
 	if (!srcwidth || !srcheight)
@@ -1518,6 +1519,8 @@ void getrtgfilterdata(int monid, struct displayscale *ds)
 		picasso_offset_y = -yy;
 		mx = mul;
 		my = mul;
+		outwidth = srcwidth;
+		outheight = srcheight;
 		ds->mode = 1;
 	} else if (mon->scalepicasso == RTG_MODE_CENTER) {
 		int xx = (mon->currentmode.native_width - srcwidth) / 2;
@@ -1526,6 +1529,8 @@ void getrtgfilterdata(int monid, struct displayscale *ds)
 		picasso_offset_y = -yy;
 		ds->outwidth = mon->currentmode.native_width;
 		ds->outheight = mon->currentmode.native_height;
+		outwidth = ds->outwidth;
+		outheight = ds->outheight;
 		mx = my = 1.0;
 	} else {
 		if (currprefs.win32_rtgscaleaspectratio < 0) {
@@ -1555,6 +1560,8 @@ void getrtgfilterdata(int monid, struct displayscale *ds)
 			ds->outheight = srcheight;
 			picasso_offset_x = (state->Width - xx) / 2;
 		}
+		outwidth = ds->outwidth;
+		outheight = ds->outheight;
 	}
 
 	ds->xoffset += picasso_offset_x;
@@ -1563,8 +1570,8 @@ void getrtgfilterdata(int monid, struct displayscale *ds)
 	picasso_offset_x /= state->HLineDBL;
 	picasso_offset_y /= state->VLineDBL;
 
-	picasso_offset_mx = (float)(srcwidth * mx * state->HLineDBL) / ds->dstwidth;
-	picasso_offset_my = (float)(srcheight * my * state->VLineDBL) / ds->dstheight;
+	picasso_offset_mx = (float)(srcwidth * mx * state->HLineDBL) / outwidth;
+	picasso_offset_my = (float)(srcheight * my * state->VLineDBL) / outheight;
 }
 
 static uae_u8 *gfx_lock_picasso2(int monid, bool fullupdate)
@@ -4258,7 +4265,7 @@ void releasehdc(int monid, HDC hdc)
 	}
 }
 
-TCHAR *outGUID(const GUID *guid)
+const TCHAR *outGUID(const GUID *guid)
 {
 	static TCHAR gb[64];
 	if (guid == NULL)

@@ -395,6 +395,7 @@ static int linear_vpos_vsync;
 static int linear_display_vpos;
 int current_linear_vpos, current_linear_hpos;
 int current_linear_vpos_nom, current_linear_hpos_short;
+static int linear_vpos_visible, current_linear_vpos_visible;
 static int current_linear_vpos_temp, current_linear_hpos_temp;
 static int current_linear_temp_change;
 static bool display_redraw;
@@ -419,6 +420,7 @@ int display_reset;
 static bool initial_frame;
 static int custom_fastmode_exit;
 static evt_t last_vsync_evt, last_hsync_evt;
+static bool aexthblanken;
 #if 0
 static int custom_fastmode_bplextendmask;
 #endif
@@ -610,6 +612,7 @@ static uae_u16 ddfstrt_saved, ddfstop_saved, diwhigh_saved;
 static uae_u32 saved_color_regs_aga[32];
 static struct color_entry agnus_colors;
 static int varsync_changed, varsync_maybe_changed[2];
+static int lines_after_beamcon_change;
 static bool programmed_register_accessed_v, programmed_register_accessed_h;
 static bool need_vdiw_check;
 static int varhblank_lines, varhblank_val[2];
@@ -643,7 +646,7 @@ static int display_hstart_fastmode;
 static int color_table_index;
 static bool color_table_changed;
 #define COLOR_TABLE_ENTRIES 2
-static uae_u8 color_tables[COLOR_TABLE_ENTRIES * 256 * sizeof(uae_u32)];
+static uae_u8 color_tables[COLOR_TABLE_ENTRIES * 512 * sizeof(uae_u32)];
 
 #define HSYNCTIME (maxhpos * CYCLE_UNIT)
 
@@ -867,7 +870,7 @@ static void setclr(uae_u16 *p, uae_u16 val)
 // is last display line?
 static bool is_last_line(void)
 {
-	return  vpos == vsync_startline || vpos + 1 == vsync_startline;
+	return  vpos == vsync_startline || (vpos + 1 == vsync_startline && vpos_prev + 1 != vsync_startline - 1);
 }
 
 static void docols(struct color_entry *colentry)
@@ -1735,6 +1738,7 @@ static void init_beamcon0(void)
 
 	doublescan = 0;
 	programmedmode = 0;
+	lines_after_beamcon_change = 5;
 
 	isntsc = (beamcon0 & BEAMCON0_PAL) ? 0 : 1;
 	islace = (interlace_seen) ? 1 : 0;
@@ -1787,7 +1791,7 @@ static void init_beamcon0(void)
 		if (currprefs.gfx_overscanmode >= OVERSCANMODE_ULTRA) {
 			display_hstart_cyclewait_end = 0;
 		} else {
-			if (exthblanken && !(beamcon0 & BEAMCON0_VARBEAMEN)) {
+			if (aexthblanken && !(beamcon0 & BEAMCON0_VARBEAMEN)) {
 				int hp2 = maxhpos * 2;
 				int hbstrtx, hbstopx;
 				int hb = 1;
@@ -1884,7 +1888,8 @@ static void init_beamcon0(void)
 		} else {
 			int hp2 = maxhpos * 2;
 			int hbstrtx, hbstopx;
-			if (exthblanken) {
+
+			if (aexthblanken) {
 
 				hb = 1;
 				hbstrtx = (hbstrt & 0xff) * 2;
@@ -2165,6 +2170,7 @@ static void init_hz_reset(void)
 	current_linear_hpos_temp = current_linear_hpos;
 	current_linear_vpos_temp = current_linear_vpos;
 	current_linear_temp_change = 0;
+	current_linear_vpos_visible = 0;
 	init_hz();
 }
 
@@ -3043,6 +3049,7 @@ static void COPJMP(int num, int vblank)
 		} else {
 			cop_state.state = COP_strobe_delay_start;
 		}
+		cop_state.strobeip = 0xffffffff;
 	} else {
 		// copper request done for next cycle
 		if (vblank) {
@@ -3321,7 +3328,7 @@ static void intreq_checks(uae_u16 oldreq, uae_u16 newreq)
 	serial_rbf_change((newreq & 0x0800) ? 1 : 0);
 }
 
-void event_doint_delay_do_ext_old(uae_u32 v)
+static void event_doint_delay_do_ext_old(uae_u32 v)
 {
 	uae_u16 old = intreq2;
 	setclr(&intreq, (1 << v) | 0x8000);
@@ -3496,10 +3503,22 @@ static void update_agnus_vb(void)
 		agnus_vb_active = agnus_pvb;
 		agnus_vb_active_end_line = agnus_pvb_end_line;
 		agnus_vb_active_start_line = agnus_pvb_start_line;
+		if (agnus_pvb_start_line) {
+			current_linear_vpos_visible = linear_vpos_visible;
+		}
+		if (agnus_pvb_end_line) {
+			linear_vpos_visible = 1;
+		}
 	} else {
 		agnus_vb_active = agnus_vb == 1;
 		agnus_vb_active_end_line = agnus_vb_end_line;
 		agnus_vb_active_start_line = agnus_vb_start_line;
+		if (agnus_vb_start_line) {
+			current_linear_vpos_visible = linear_vpos_visible;
+		}
+		if (agnus_vb_end_line) {
+			linear_vpos_visible = 1;
+		}
 	}
 }
 
@@ -3528,7 +3547,13 @@ static void BEAMCON0(uae_u16 v)
 
 static void check_exthblank(void)
 {
+	aexthblanken = (bplcon0 & 1) && (bplcon3 & 1) && ecs_denise;
 	resetfulllinestate();
+	// Recalculate beamcon0 settings if exthblank was set after BEAMCON0 modification (hblank is used for programmed mode centering)
+	if (lines_after_beamcon_change > 0) {
+		init_beamcon0();
+		lines_after_beamcon_change = 0;
+	}
 }
 
 static void varsync(int reg, bool resync, int oldval)
@@ -4273,6 +4298,7 @@ static void COLOR_WRITE(uae_u16 v, int num)
 		uae_u32 cval = (cr << 16) | (cg << 8) | cb;
 
 		agnus_colors.color_regs_aga[colreg] = cval;
+		agnus_colors.acolors[colreg] = getxcolor(cval);
 
 	} else {
 
@@ -5056,18 +5082,12 @@ static void vsync_display_render(void)
 		vsyncmintimepre = read_processor_time();
 
 		if (!custom_disabled) {
-			if (!has_draw_denise()) {
-				start_draw_denise();
-			}
 			draw_denise_vsync_queue(display_redraw);
 			display_redraw = false;
 		}
 
 		draw_denise_line_queue_flush();
-
-		if (has_draw_denise()) {
-			end_draw_denise();
-		}
+		end_draw_denise();
 		vsync_handler_render();
 		if (!custom_disabled) {
 			start_draw_denise();
@@ -6516,6 +6536,9 @@ static void vsync_start_check(void)
 		}
 		displayreset_delayed >>= 1;
 	}
+	if (lines_after_beamcon_change > 0) {
+		lines_after_beamcon_change--;
+	}
 }
 
 static bool uae_quit_check(void)
@@ -6656,10 +6679,6 @@ void custom_reset(bool hardreset, bool keyboardreset)
 	memory_map_dump();
 #endif
 
-	rga_slot_first_offset = 0;
-	rga_slot_in_offset = 1;
-	rga_slot_out_offset = 2;
-
 	for(int i = 0; i < DENISE_RGA_SLOT_TOTAL; i++) {
 		struct denise_rga *r = &rga_denise[i];
 		memset(r, 0, sizeof(struct denise_rga));
@@ -6703,6 +6722,7 @@ void custom_reset(bool hardreset, bool keyboardreset)
 	maxvpos_display_vsync_next = false;
 	programmed_register_accessed_h = false;
 	programmed_register_accessed_v = false;
+	aexthblanken = false;
 	denise_reset(false);
 
 	agnus_hpos_next = -1;
@@ -6754,6 +6774,9 @@ void custom_reset(bool hardreset, bool keyboardreset)
 	}
 
 	if (!savestate_state) {
+		rga_slot_first_offset = 0;
+		rga_slot_in_offset = 1;
+		rga_slot_out_offset = 2;
 		cia_hsync = 0;
 		extra_cycle = 0;
 		currprefs.chipset_mask = changed_prefs.chipset_mask;
@@ -6996,10 +7019,7 @@ void custom_reset(bool hardreset, bool keyboardreset)
 	setmaxhpos();
 	resetfulllinestate();
 	updateprghpostable();
-
-	if (!has_draw_denise()) {
-		start_draw_denise();
-	}
+	start_draw_denise();
 
 #ifdef ACTION_REPLAY
 	/* Doing this here ensures we can use the 'reset' command from within AR */
@@ -7506,6 +7526,9 @@ static int custom_wput_agnus(int addr, uae_u32 value, int noget)
 	case 0x5E: BLTSIZH(hpos, value); break;
 	case 0x1E4: DIWHIGH(value); break;
 
+	case 0x098: CLXCON(value); break;
+	case 0x10e: CLXCON2(value); break;
+
 	case 0x1DC: BEAMCON0(value); break;
 	case 0x1C0:
 		if (htotal != value) {
@@ -7759,6 +7782,9 @@ void restore_custom_start(void)
 	memset(&cop_state, 0, sizeof(cop_state));
 	cop_state.state = COP_stop;
 	denise_reset(true);
+	rga_slot_first_offset = 0;
+	rga_slot_in_offset = 1;
+	rga_slot_out_offset = 2;
 }
 
 #define RB restore_u8()
@@ -8428,6 +8454,9 @@ static uaecptr *getptfromreg(int reg)
 {
 	switch (reg)
 	{
+	case -1:
+	case 0xffff:
+		return NULL;
 	case 0x000:
 		return &blt_info.bltdpt;
 	case 0x070:
@@ -8473,7 +8502,6 @@ static uaecptr *getptfromreg(int reg)
 	}
 	return &dummyrgaaddr;
 }
-
 
 uae_u8 *save_custom_slots(size_t *len, uae_u8 *dstptr)
 {
@@ -8524,6 +8552,8 @@ uae_u8 *save_custom_slots(size_t *len, uae_u8 *dstptr)
 		regidx = getregfrompt(r->conflict);
 		save_u16(regidx);
 	}
+
+	save_u8(rga_slot_first_offset);
 
 	*len = dst - dstbak;
 	return dstbak;
@@ -8576,6 +8606,9 @@ uae_u8 *restore_custom_slots(uae_u8 *src)
 			regidx = restore_u16();
 			r->conflict = getptfromreg(regidx);
 		}
+		rga_slot_first_offset = restore_u8();
+		rga_slot_in_offset = (rga_slot_first_offset + 1) & 3;
+		rga_slot_out_offset = (rga_slot_in_offset + 1) & 3;
 	}
 
 	return src;
@@ -9476,6 +9509,9 @@ static void generate_copper(void)
 		// But it still gets allocated by copper if it is free = CPU and blitter can't use it.
 		if (bus_allocated) {
 			cop_state.state = COP_strobe_delay2;
+			if (cop_state.strobeip == 0xffffffff) {
+				cop_state.strobetype = 1;
+			}
 			cop_state.strobeip = getstrobecopip();
 			cop_state.strobe = 0;
 			cop_state.ignore_next = 0;
@@ -10736,7 +10772,10 @@ static bool draw_line_fast(struct linestate *l, int ldv, uaecptr bplptp[8], bool
 	int colors = getcolorcount(planes);
 	int len = l->bpllen;
 	for (int i = 0; i < planes; i++) {
-		uaecptr pt = bplptp[i] & chipmem_bank.mask;
+		uaecptr pt = bplptp[i];
+		if (!currprefs.z3chipmem.size) {
+			pt &= chipmem_bank.mask;
+		}
 		if (!valid_address(pt, len)) {
 			return false;
 		}
@@ -10748,8 +10787,10 @@ static bool draw_line_fast(struct linestate *l, int ldv, uaecptr bplptp[8], bool
 		if (color_table_index >= COLOR_TABLE_ENTRIES) {
 			color_table_index = 0;
 		}
-		l->linecolorstate = color_tables + color_table_index * 256 * sizeof(uae_u32);
+		l->linecolorstate = color_tables + color_table_index * 512 * sizeof(uae_u32);
 		uae_u8 *dpt = l->linecolorstate;
+		memcpy(dpt, agnus_colors.acolors, colors * sizeof(uae_u32));
+		dpt += 256 * sizeof(uae_u32);
 		if (aga_mode) {
 			memcpy(dpt, agnus_colors.color_regs_aga, colors * sizeof(uae_u32));
 		} else {
@@ -10757,7 +10798,7 @@ static bool draw_line_fast(struct linestate *l, int ldv, uaecptr bplptp[8], bool
 		}
 		color_table_changed = false;
 	} else {
-		l->linecolorstate = color_tables + color_table_index * 256 * sizeof(uae_u32);
+		l->linecolorstate = color_tables + color_table_index * 512 * sizeof(uae_u32);
 	}
 
 	l->color0 = aga_mode ? agnus_colors.color_regs_aga[0] : agnus_colors.color_regs_ecs[0];
@@ -10991,9 +11032,7 @@ static void dmal_fast(void)
 
 static void do_draw_line(void)
 {
-	if (!has_draw_denise()) {
-		start_draw_denise();
-	}
+	start_draw_denise();
 
 	if (custom_fastmode_exit) {
 		custom_fastmode_exit = 0;
@@ -11248,6 +11287,7 @@ static void custom_trigger_start_nosync(void)
 {
 	linear_display_vpos = linear_vpos;
 	linear_vpos++;
+	linear_vpos_visible++;
 	if (linear_vpos >= maxvpos + lof_store) {
 		vsync_nosync();
 	}
@@ -11267,6 +11307,7 @@ static void custom_trigger_start(void)
 	}
 	linear_display_vpos = linear_vpos;
 	linear_vpos++;
+	linear_vpos_visible++;
 	draw_line_next_line = 0;
 
 	linear_vpos_vsync++;
@@ -11912,8 +11953,6 @@ static void check_hsyncs(void)
 	}
 }
 
-extern void process_blitter(struct rgabuf*);
-
 static void handle_rga_out(void)
 {
 	if (dmal_next) {
@@ -12204,7 +12243,6 @@ static void generate_dma_requests(void)
 	}
 
 	if (blt_info.blit_queued || blitter_delayed_update) {
-		extern void generate_blitter(void);
 		generate_blitter();
 	}
 }
@@ -12726,7 +12764,7 @@ bool isvga(void)
 bool ispal(int *lines)
 {
 	if (lines) {
-		*lines = current_linear_vpos_nom;
+		*lines = current_linear_vpos_visible;
 	}
 	if (programmedmode == 1) {
 		return currprefs.ntscmode == 0;
@@ -12737,8 +12775,5 @@ bool ispal(int *lines)
 void custom_end_drawing(void)
 {
 	draw_denise_line_queue_flush();
-	if (has_draw_denise()) {
-		write_log("flushing denise draw queue\n");
-		end_draw_denise();
-	}
+	end_draw_denise();
 }

@@ -206,11 +206,10 @@ void getfilterdata(int monid, struct displayscale *ds)
 
 	if (mon->screen_is_picasso) {
 		getrtgfilterdata(monid, ds);
-		if (D3D_getscalerect && D3D_getscalerect(monid, &mrmx, &mrmy, &mrsx, &mrsy, ds->dstwidth, ds->dstheight)) {
+		if (D3D_getscalerect && D3D_getscalerect(monid, &mrmx, &mrmy, &mrsx, &mrsy, ds->srcwidth, ds->srcheight)) {
 			ds->xoffset += (int)mrsx;
 			ds->yoffset += (int)mrsy;
-			ds->dstwidth += (int)mrmx;
-			ds->dstheight += (int)mrmy;
+			sizeoffset(ds, (int)mrmx, (int)mrmy);
 		}
 		return;
 	}
@@ -224,7 +223,7 @@ void getfilterdata(int monid, struct displayscale *ds)
 	extrah = (int)(-ahs * (filter_vert_zoom - currprefs.gf[idx].gfx_filteroverlay_overscan * 10) / 2.0f);
 
 	extraw2 = 0;
-	if (D3D_getscalerect && D3D_getscalerect(monid, &mrmx, &mrmy, &mrsx, &mrsy, avidinfo->outbuffer->inwidth2, avidinfo->outbuffer->inheight2)) {
+	if (D3D_getscalerect && D3D_getscalerect(monid, &mrmx, &mrmy, &mrsx, &mrsy, ds->srcwidth, ds->srcheight)) {
 		extraw2 = (int)mrmx;
 		//extrah -= mrmy;
 	}
@@ -677,37 +676,62 @@ cont:
 	}
 
 	{
-		float palntscratio = dstratio;
-		int l = 0;
-		bool isp = ispal(&l);
-		if (abs(l - 262) <= 25) {
-			l = 262;
-		}
-		if (abs(l - 312) <= 25) {
-			l = 312;
-		}
-		float ll = l * 2.0f + 1.0f;
-		if (currprefs.ntscmode) {
-			if (palntscadjust && isp) {
-				palntscratio = palntscratio * (525.0f / ll);
+		int lh = 0;
+		bool isp = ispal(&lh);
+		if (lh > 1) {
+			float palntscratio = dstratio;
+			float palh = (312 - 25) * 2 + 1.0f;
+			float ntsch = (262 - 20) * 2 + 1.0f;
+			float ll = (lh - 23) * 2 + 1.0f;
+			if (abs(lh - (262 - 20)) <= 22) {
+				ll = ntsch;
 			}
-			if (keep_aspect == 2 && isp) {
-				palntscratio = palntscratio * 0.93f;
-			} else if (keep_aspect == 1 && !isp) {
-				palntscratio = palntscratio * 0.98f;
+			if (abs(lh - (312 - 25)) <= 22) {
+				ll = palh;
 			}
-		} else {
-			if (palntscadjust && !isp) {
-				palntscratio = palntscratio * (625.0f / ll);
+			if (currprefs.gfx_ntscpixels) {
+				if (!isp) {
+					palntscratio = palntscratio * palh / ll;
+				}
+				if (currprefs.ntscmode) {
+					if (keep_aspect == 2 && isp) {
+						palntscratio = palntscratio * 0.93f;
+					}
+					else if (keep_aspect == 1 && !isp) {
+						palntscratio = palntscratio * 0.98f;
+					}
+				} else {
+					if (keep_aspect == 2 && isp) {
+						palntscratio = palntscratio * 0.95f;
+					}
+					else if (keep_aspect == 1 && !isp) {
+						palntscratio = palntscratio * 0.95f;
+					}
+				}
+			} else {
+				if (currprefs.ntscmode) {
+					if (palntscadjust && isp) {
+						palntscratio = palntscratio * ntsch / ll;
+					}
+					if (keep_aspect == 2 && isp) {
+						palntscratio = palntscratio * 0.93f;
+					} else if (keep_aspect == 1 && !isp) {
+						palntscratio = palntscratio * 0.98f;
+					}
+				} else {
+					if (palntscadjust && !isp) {
+						palntscratio = palntscratio * palh / ll;
+					}
+					if (keep_aspect == 2 && isp) {
+						palntscratio = palntscratio * 0.95f;
+					} else if (keep_aspect == 1 && !isp) {
+						palntscratio = palntscratio * 0.95f;
+					}
+				}
 			}
-			if (keep_aspect == 2 && isp) {
-				palntscratio = palntscratio * 0.95f;
-			} else if (keep_aspect == 1 && !isp) {
-				palntscratio = palntscratio * 0.95f;
+			if (palntscratio != dstratio) {
+				ymult = ymult * palntscratio / dstratio;
 			}
-		}
-		if (palntscratio != dstratio) {
-			ymult = ymult * palntscratio / dstratio;
 		}
 	}
 
@@ -752,11 +776,10 @@ cont:
 
 end:
 
-	if (D3D_getscalerect && D3D_getscalerect(monid, &mrmx, &mrmy, &mrsx, &mrsy, avidinfo->outbuffer->inwidth2, avidinfo->outbuffer->inheight2)) {
+	if (D3D_getscalerect && D3D_getscalerect(monid, &mrmx, &mrmy, &mrsx, &mrsy, ds->srcwidth, ds->srcheight)) {
 		ds->xoffset += (int)mrsx;
 		ds->yoffset += (int)mrsy;
-		ds->outwidth += (int)mrmx;
-		ds->outheight += (int)mrmy;
+		sizeoffset(ds, (int)mrmx, (int)mrmy);
 	}
 
 	check_custom_limits();

@@ -1743,7 +1743,7 @@ void gfxboard_vsync_handler(bool full_redraw_required, bool redraw_required)
 					}
 				}
 #endif
-				if (!gb->board->hasswitcher && gb->vram) {
+				if ((!gb->board->hasswitcher && gb->rbc->autoswitch) && gb->vram) {
 					bool svga_on(void *p);
 					bool on = svga_on(gb->pcemobject2);
 					set_monswitch(gb, on);
@@ -4727,6 +4727,15 @@ int gfxboard_get_configtype(struct rtgboardconfig *rbc)
 	return gb->board->configtype;
 }
 
+bool gfxboard_get_switcher(struct rtgboardconfig *rbc)
+{
+	int type = rbc->rtgmem_type;
+	if (type < GFXBOARD_HARDWARE)
+		return true;
+	const struct gfxboard *b = find_board(type);
+	return b->hasswitcher;
+}
+
 bool gfxboard_need_byteswap (struct rtgboardconfig *rbc)
 {
 	int type = rbc->rtgmem_type;
@@ -5018,30 +5027,30 @@ bool gfxboard_init_memory (struct autoconfig_info *aci)
 	_stprintf(gb->lbsmemorybankname, _T("%s VRAM LONGSWAP"), gb->board->name);
 	_stprintf(gb->regbankname, _T("%s REG"), gb->board->name);
 
-	memcpy(&gb->gfxboard_bank_memory, &tmpl_gfxboard_bank_memory, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_wbsmemory, &tmpl_gfxboard_bank_wbsmemory, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_lbsmemory, &tmpl_gfxboard_bank_lbsmemory, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_nbsmemory, &tmpl_gfxboard_bank_nbsmemory, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_registers, &tmpl_gfxboard_bank_registers, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_registers2, &tmpl_gfxboard_bank_registers2, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_special, &tmpl_gfxboard_bank_special, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_memory_nojit, &tmpl_gfxboard_bank_memory_nojit, sizeof addrbank);
+	memcpy(&gb->gfxboard_bank_memory, &tmpl_gfxboard_bank_memory, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_wbsmemory, &tmpl_gfxboard_bank_wbsmemory, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_lbsmemory, &tmpl_gfxboard_bank_lbsmemory, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_nbsmemory, &tmpl_gfxboard_bank_nbsmemory, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_registers, &tmpl_gfxboard_bank_registers, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_registers2, &tmpl_gfxboard_bank_registers2, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_special, &tmpl_gfxboard_bank_special, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_memory_nojit, &tmpl_gfxboard_bank_memory_nojit, sizeof(addrbank));
 
-	memcpy(&gb->gfxboard_bank_vram_pcem, &tmpl_gfxboard_bank_vram_pcem, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_vram_normal_pcem, &tmpl_gfxboard_bank_vram_normal_pcem, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_vram_wordswap_pcem, &tmpl_gfxboard_bank_vram_wordswap_pcem, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_vram_longswap_pcem, &tmpl_gfxboard_bank_vram_longswap_pcem, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_vram_cv_1_pcem, &tmpl_gfxboard_bank_vram_cv_1_pcem, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_vram_p4z2_pcem, &tmpl_gfxboard_bank_vram_p4z2_pcem, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_io_swap_pcem, &tmpl_gfxboard_bank_io_swap_pcem, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_io_swap2_pcem, &tmpl_gfxboard_bank_io_swap2_pcem, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_io_pcem, &tmpl_gfxboard_bank_io_pcem, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_pci_pcem, &tmpl_gfxboard_bank_pci_pcem, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_mmio_pcem, &tmpl_gfxboard_bank_mmio_pcem, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_mmio_wbs_pcem, &tmpl_gfxboard_bank_mmio_wbs_pcem, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_mmio_lbs_pcem, &tmpl_gfxboard_bank_mmio_lbs_pcem, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_special_pcem, &tmpl_gfxboard_bank_special_pcem, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_bios, &tmpl_gfxboard_bank_bios, sizeof addrbank);
+	memcpy(&gb->gfxboard_bank_vram_pcem, &tmpl_gfxboard_bank_vram_pcem, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_vram_normal_pcem, &tmpl_gfxboard_bank_vram_normal_pcem, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_vram_wordswap_pcem, &tmpl_gfxboard_bank_vram_wordswap_pcem, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_vram_longswap_pcem, &tmpl_gfxboard_bank_vram_longswap_pcem, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_vram_cv_1_pcem, &tmpl_gfxboard_bank_vram_cv_1_pcem, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_vram_p4z2_pcem, &tmpl_gfxboard_bank_vram_p4z2_pcem, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_io_swap_pcem, &tmpl_gfxboard_bank_io_swap_pcem, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_io_swap2_pcem, &tmpl_gfxboard_bank_io_swap2_pcem, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_io_pcem, &tmpl_gfxboard_bank_io_pcem, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_pci_pcem, &tmpl_gfxboard_bank_pci_pcem, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_mmio_pcem, &tmpl_gfxboard_bank_mmio_pcem, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_mmio_wbs_pcem, &tmpl_gfxboard_bank_mmio_wbs_pcem, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_mmio_lbs_pcem, &tmpl_gfxboard_bank_mmio_lbs_pcem, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_special_pcem, &tmpl_gfxboard_bank_special_pcem, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_bios, &tmpl_gfxboard_bank_bios, sizeof(addrbank));
 
 	gb->gfxboard_bank_memory.name = gb->memorybankname;
 	gb->gfxboard_bank_memory_nojit.name = gb->memorybanknamenojit;
@@ -5183,13 +5192,13 @@ bool gfxboard_init_memory_p4_z2 (struct autoconfig_info *aci)
 	if (!aci->doinit)
 		return true;
 
-	memcpy(&gb->gfxboard_bank_memory, &tmpl_gfxboard_bank_memory, sizeof addrbank);
+	memcpy(&gb->gfxboard_bank_memory, &tmpl_gfxboard_bank_memory, sizeof(addrbank));
 	gb->gfxboard_bank_memory.bget = gfxboard_bget_mem_autoconfig;
 	gb->gfxboard_bank_memory.bput = gfxboard_bput_mem_autoconfig;
 	return true;
 }
 
-bool gfxboard_init_registersx(struct autoconfig_info *aci, int regnum)
+static bool gfxboard_init_registersx(struct autoconfig_info *aci, int regnum)
 {
 	struct rtggfxboard *gb = &rtggfxboards[aci->devnum];
 	int size;
@@ -6106,7 +6115,7 @@ static uae_u8 get_io_merlin(struct rtggfxboard *gb, uae_u32 addr)
 				uae_u8 aa = a >> 3;
 				uae_u8 d = 0xff;
 				if ((a & 7) == 3) {
-					uae_u8 ser[4] = { gb->extradata[0] >> 24, (uae_u8)(gb->extradata[0] >> 16), (uae_u8)(gb->extradata[0] >> 8), (uae_u8)(gb->extradata[0] >> 0) };
+					uae_u8 ser[4] = { (uae_u8)(gb->extradata[0] >> 24), (uae_u8)(gb->extradata[0] >> 16), (uae_u8)(gb->extradata[0] >> 8), (uae_u8)(gb->extradata[0] >> 0) };
 					if (aa == 0x7c) {
 						d = ser[0];
 					} else if (aa == 0x7d) {

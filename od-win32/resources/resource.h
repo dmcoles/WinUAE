@@ -1273,6 +1273,7 @@
 #define IDC_RTG_INTEGERSCALE            1801
 #define IDC_INFOBOX_TEXT2               1802
 #define IDC_INPUTMAPOUTM                1802
+#define IDC_RTG_SWITCHER                1802
 #define IDC_INFOBOX_TEXT1               1803
 #define IDC_INFOBOX_TEXT3               1804
 #define IDC_CD_EJECT                    1804
@@ -1361,6 +1362,7 @@
 #define IDC_KEYBOARD_SWAPHACK           1865
 #define IDC_SCSIROM24BITDMA             1866
 #define IDC_CUSTOMDATAPATH              1866
+#define IDC_KEYBOARD_ENDHACK            1866
 #define IDC_SER_RTSCTSDTRDTECD          1867
 #define IDC_SER_RI                      1868
 #define ID__FLOPPYDRIVES                40004

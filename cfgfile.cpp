@@ -44,6 +44,7 @@
 #ifdef WITH_SPECIALMONITORS
 #include "specialmonitors.h"
 #endif
+#include "ide.h"
 
 #define cfgfile_warning write_log
 #define cfgfile_warning_obsolete write_log
@@ -308,7 +309,7 @@ static const TCHAR *uaescsidevmodes[] = {
 };
 static const TCHAR *uaebootrom[] = {
 	_T("automatic"),
-	_T("disabled"), 
+	_T("disabled"),
 	_T("min"),
 	_T("full"),
 	NULL
@@ -2905,6 +2906,11 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
 					_tcscat(tmp2, _T(","));
 				_stprintf(tmp2 + _tcslen(tmp2), _T("monitor=%d"), rbc->monitor_id);
 			}
+			if (!rbc->autoswitch) {
+				if (tmp2)
+					_tcscat(tmp2, _T(","));
+				_tcscat(tmp2 + _tcslen(tmp2), _T("noautoswitch"));
+			}
 			if (tmp2[0]) {
 				if (i > 0)
 					_stprintf(tmp, _T("gfxcard%d_options"), i + 1);
@@ -5175,9 +5181,6 @@ static bool parse_geo (const TCHAR *tname, struct uaedev_config_info *uci, struc
 		ret = true;
 	}
 
-	void ata_parse_identity(uae_u8 *out, struct uaedev_config_info *uci, bool *lba, bool *lba48, int *max_multiple);
-	bool ata_get_identity(struct ini_data *ini, uae_u8 *out, bool overwrite);
-
 	uae_u8 ident[512];
 	if (ata_get_identity(ini, ident, true)) {
 		bool lba, lba48;
@@ -6264,6 +6267,10 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, const TCHAR *option, TCH
 			if (s) {
 				rbc->monitor_id = _tstol(s);
 				xfree(s);
+			}
+			rbc->autoswitch = !cfgfile_option_find(value, _T("noautoswitch"));
+			if (cfgfile_option_find(value, _T("autoswitch"))) {
+				rbc->autoswitch = true;
 			}
 			return 1;
 		}
@@ -9058,7 +9065,7 @@ static int bip_a4000 (struct uae_prefs *p, int config, int compa, int romcheck)
 		p->ppc_mode = 1;
 		cpuboard_setboard(p, BOARD_CYBERSTORM, BOARD_CYBERSTORM_SUB_PPC);
 		p->cpuboardmem1.size = 128 * 1024 * 1024;
-		int roms_ppc[] = { 98, -1 };
+		int roms_ppc[] = { 98, 326, 327, -1 };
 		configure_rom(p, roms_ppc, romcheck);
 #endif
 		break;
@@ -9274,7 +9281,7 @@ static int bip_cd32 (struct uae_prefs *p, int config, int compa, int romcheck)
 static int bip_a1200 (struct uae_prefs *p, int config, int compa, int romcheck)
 {
 	int roms[4];
-	int roms_bliz[2];
+	int roms_bliz[4];
 
 	buildin_default_prefs_68020 (p);
 	roms[0] = 11;
@@ -9283,6 +9290,8 @@ static int bip_a1200 (struct uae_prefs *p, int config, int compa, int romcheck)
 	roms[3] = -1;
 	roms_bliz[0] = -1;
 	roms_bliz[1] = -1;
+	roms_bliz[2] = -1;
+	roms_bliz[3] = -1;
 	p->cs_rtc = 0;
 	p->cs_compatible = CP_A1200;
 	built_in_chipset_prefs (p);
@@ -9330,8 +9339,10 @@ static int bip_a1200 (struct uae_prefs *p, int config, int compa, int romcheck)
             roms[0] = 15;
             roms[1] = 11;
             roms[2] = -1;
-            roms_bliz[0] = 100;
-            configure_rom(p, roms_bliz, romcheck);
+			roms_bliz[0] = 100;
+			roms_bliz[1] = 329;
+			roms_bliz[2] = 330;
+			configure_rom(p, roms_bliz, romcheck);
             break;
 #endif
 #else

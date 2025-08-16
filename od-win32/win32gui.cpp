@@ -1646,88 +1646,6 @@ struct romscandata {
 	int got;
 };
 
-static struct romdata *scan_single_rom_2 (struct zfile *f)
-{
-	uae_u8 buffer[20] = { 0 };
-	uae_u8 *rombuf;
-	int cl = 0, size;
-	struct romdata *rd = 0;
-
-	zfile_fseek(f, 0, SEEK_END);
-	size = zfile_ftell32(f);
-	zfile_fseek(f, 0, SEEK_SET);
-	if (size > 524288 * 2)  {/* don't skip KICK disks or 1M ROMs */
-		write_log (_T("'%s': too big %d, ignored\n"), zfile_getname(f), size);
-		return 0;
-	}
-	zfile_fread (buffer, 1, 11, f);
-	if (!memcmp (buffer, "KICK", 4)) {
-		zfile_fseek (f, 512, SEEK_SET);
-		if (size > 262144)
-			size = 262144;
-	} else if (!memcmp (buffer, "AMIROMTYPE1", 11)) {
-		cl = 1;
-		size -= 11;
-	} else {
-		zfile_fseek (f, 0, SEEK_SET);
-	}
-	rombuf = xcalloc (uae_u8, size);
-	if (!rombuf)
-		return 0;
-	zfile_fread (rombuf, 1, size, f);
-	if (cl > 0) {
-		decode_cloanto_rom_do (rombuf, size, size);
-		cl = 0;
-	}
-	if (!cl) {
-		rd = getromdatabydata (rombuf, size);
-		if (!rd && (size & 65535) == 0) {
-			/* check byteswap */
-			int i;
-			for (i = 0; i < size; i+=2) {
-				uae_u8 b = rombuf[i];
-				rombuf[i] = rombuf[i + 1];
-				rombuf[i + 1] = b;
-			}
-			rd = getromdatabydata (rombuf, size);
-		}
-	}
-	if (!rd) {
-		const TCHAR *name = my_getfilepart(zfile_getname(f));
-		rd = getfrombydefaultname(name, size);
-	}
-	if (!rd) {
-		write_log (_T("!: Name='%s':%d\nCRC32=%08X SHA1=%s\n"),
-			zfile_getname (f), size, get_crc32 (rombuf, size), get_sha1_txt (rombuf, size));
-	} else {
-		TCHAR tmp[MAX_DPATH];
-		getromname (rd, tmp);
-		write_log (_T("*: %s:%d = %s\nCRC32=%08X SHA1=%s\n"),
-			zfile_getname (f), size, tmp, get_crc32 (rombuf, size), get_sha1_txt (rombuf, size));
-	}
-	xfree (rombuf);
-	return rd;
-}
-
-static struct romdata *scan_single_rom (const TCHAR *path)
-{
-	struct zfile *z;
-	TCHAR tmp[MAX_DPATH];
-	struct romdata *rd;
-
-	_tcscpy (tmp, path);
-	rd = scan_arcadia_rom (tmp, 0);
-	if (rd)
-		return rd;
-	rd = getromdatabypath (path);
-	if (rd && rd->crc32 == 0xffffffff)
-		return rd;
-	z = zfile_fopen (path, _T("rb"), ZFD_NORMAL);
-	if (!z)
-		return 0;
-	return scan_single_rom_2 (z);
-}
-
 static void abspathtorelative (TCHAR *name)
 {
 	if (!_tcsncmp (start_path_exe, name, _tcslen (start_path_exe)))
@@ -1813,7 +1731,8 @@ static int isromext (const TCHAR *path, bool deepscan)
 	ext++;
 
 	if (!_tcsicmp (ext, _T("rom")) || !_tcsicmp (ext, _T("bin")) ||  !_tcsicmp (ext, _T("adf")) || !_tcsicmp (ext, _T("key"))
-		|| !_tcsicmp (ext, _T("a500")) || !_tcsicmp (ext, _T("a1200")) || !_tcsicmp (ext, _T("a4000")) || !_tcsicmp (ext, _T("cd32")))
+		|| !_tcsicmp (ext, _T("a500")) || !_tcsicmp(ext, _T("a600"))
+		|| !_tcsicmp(ext, _T("a1200")) || !_tcsicmp(ext, _T("a3000")) || !_tcsicmp (ext, _T("a4000")) || !_tcsicmp (ext, _T("cd32")))
 		return 1;
 	if (_tcslen (ext) >= 2 && toupper(ext[0]) == 'U' && isdigit (ext[1]))
 		return 1;
@@ -1891,7 +1810,7 @@ static int scan_rom_2 (struct zfile *f, void *vrsd)
 	scan_rom_hook (NULL, 0);
 	if (!isromext (path, true))
 		return 0;
-	rd = scan_single_rom_2 (f);
+	rd = scan_single_rom_file(f);
 	if (rd) {
 		TCHAR name[MAX_DPATH];
 		getromname (rd, name);
@@ -1939,7 +1858,7 @@ static int listrom (const int *roms)
 	i = 0;
 	while (roms[i] >= 0) {
 		struct romdata *rd = getromdatabyid (roms[i]);
-		if (rd && romlist_get (rd))
+		if (rd && rd->crc32 != 0xffffffff && romlist_get(rd))
 			return 1;
 		i++;
 	}
@@ -1962,12 +1881,12 @@ static void show_rom_list (void)
 		59, 71, 61, -1, -1, // A3000
 		16, 46, 31, 13, 12, -1, -1, // A4000
 		17, -1, -1, // A4000T
-		18, -1, 19, -1, -1, // CD32
+		18, 64, -1, 19, 64, -1, -1, // CD32
 		20, 21, 22, -1, 6, 32, -1, -1, // CDTV
 		9, 10, -1, 107, 108, -1, -1, // CDTV-CR
 		49, 50, 75, 51, 76, 77, -1, 5, 4, -1, -2, // ARCADIA
 
-		18, -1, 19, -1, 74, 23, -1, -1,  // CD32 FMV
+		18, 64, -1, 19, 64, -1, 74, 23, -1, -1,  // CD32 FMV
 
 		69, 67, 70, 115, -1, -1, // nordic power
 		65, 68, -1, -1, // x-power
@@ -2393,6 +2312,7 @@ static void m(int monid)
 
 static void flipgui(int opengui)
 {
+	end_draw_denise();
 	D3D_guimode(0, opengui);
 	if (full_property_sheet)
 		return;
@@ -6903,6 +6823,7 @@ static void resetregistry (void)
 	regdelete(NULL, _T("ArtImageCount"));
 	regdelete(NULL, _T("ArtImageWidth"));
 	regdelete(NULL, _T("KeySwapBackslashF11"));
+	regdelete(NULL, _T("KeyEndPageUp"));
 }
 
 #include "zip.h"
@@ -11648,6 +11569,7 @@ static INT_PTR CALLBACK Expansion2DlgProc(HWND hDlg, UINT msg, WPARAM wParam, LP
 
 static void enable_for_expansiondlg(HWND hDlg)
 {
+	struct rtgboardconfig *rbc = &workprefs.rtgboards[gui_rtg_index];
 	int z3 = true;
 	int en;
 
@@ -11685,6 +11607,8 @@ static void enable_for_expansiondlg(HWND hDlg)
 	ew(hDlg, IDC_RTG_VBINTERRUPT, rtg3);
 	ew(hDlg, IDC_RTG_THREAD, rtg3 && en);
 	ew(hDlg, IDC_RTG_HWSPRITE, rtg3);
+
+	ew(hDlg, IDC_RTG_SWITCHER, rbc->rtgmem_size > 0 && !gfxboard_get_switcher(rbc));
 }
 
 static void values_to_expansiondlg(HWND hDlg)
@@ -11797,6 +11721,7 @@ static void values_to_expansiondlg(HWND hDlg)
 	CheckDlgButton(hDlg, IDC_RTG_VBINTERRUPT, workprefs.rtg_hardwareinterrupt);
 	CheckDlgButton(hDlg, IDC_RTG_HWSPRITE, workprefs.rtg_hardwaresprite);
 	CheckDlgButton(hDlg, IDC_RTG_THREAD, workprefs.rtg_multithread);
+	CheckDlgButton(hDlg, IDC_RTG_SWITCHER, rbc->rtgmem_size > 0 && (rbc->autoswitch || gfxboard_get_switcher(rbc) || rbc->rtgmem_type < GFXBOARD_HARDWARE));
 
 	xSendDlgItemMessage(hDlg, IDC_RTG_SCALE_ASPECTRATIO, CB_SETCURSEL,
 					   (workprefs.win32_rtgscaleaspectratio == 0) ? 0 :
@@ -11948,6 +11873,12 @@ static INT_PTR CALLBACK ExpansionDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LP
 			case IDC_RTG_THREAD:
 				workprefs.rtg_multithread = ischecked(hDlg, IDC_RTG_THREAD);
 				break;
+			case IDC_RTG_SWITCHER:
+				{
+					struct rtgboardconfig *rbc = &workprefs.rtgboards[gui_rtg_index];
+					rbc->autoswitch = ischecked(hDlg, IDC_RTG_SWITCHER);
+					break;
+				}
 			}
 			if (HIWORD (wParam) == CBN_SELENDOK || HIWORD (wParam) == CBN_KILLFOCUS || HIWORD (wParam) == CBN_EDITCHANGE)  {
 				uae_u32 mask = workprefs.picasso96_modeflags;
@@ -18681,7 +18612,8 @@ static void values_to_inputdlg (HWND hDlg)
 	SetDlgItemInt (hDlg, IDC_INPUTAUTOFIRERATE, workprefs.input_autofire_linecnt, FALSE);
 	SetDlgItemInt (hDlg, IDC_INPUTSPEEDD, workprefs.input_joymouse_speed, FALSE);
 	SetDlgItemInt (hDlg, IDC_INPUTSPEEDA, workprefs.input_joymouse_multiplier, FALSE);
-	CheckDlgButton (hDlg, IDC_INPUTDEVICEDISABLE, (!input_total_devices || inputdevice_get_device_status (input_selected_device)) ? BST_CHECKED : BST_UNCHECKED);
+	CheckDlgButton(hDlg, IDC_INPUTDEVICEDISABLE, (!input_total_devices || inputdevice_get_device_status(input_selected_device)) ? BST_CHECKED : BST_UNCHECKED);
+	CheckDlgButton(hDlg, IDC_KEYBOARD_ENDHACK, key_swap_end_pgup ? BST_CHECKED : BST_UNCHECKED);
 	if (key_swap_hack == 2) {
 		CheckDlgButton(hDlg, IDC_KEYBOARD_SWAPHACK, BST_INDETERMINATE);
 	} else {
@@ -20265,6 +20197,13 @@ static INT_PTR CALLBACK InputDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 			break;
 		case IDC_INPUTDEVICEDISABLE:
 			inputdevice_set_device_status (input_selected_device, ischecked (hDlg, IDC_INPUTDEVICEDISABLE));
+			break;
+		case IDC_KEYBOARD_ENDHACK:
+			{
+				key_swap_end_pgup = IsDlgButtonChecked(hDlg, IDC_KEYBOARD_ENDHACK);
+				regsetint(NULL, _T("KeyEndPageUp"), key_swap_end_pgup);
+				values_to_inputdlg(hDlg);
+			}
 			break;
 		case IDC_KEYBOARD_SWAPHACK:
 			{

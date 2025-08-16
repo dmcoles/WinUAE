@@ -2676,14 +2676,27 @@ static bool get_mouse_position(int *xp, int *yp, int inx, int iny)
 		}
 		x = (int)(x * fmx);
 		y = (int)(y * fmy);
-		x -= (int)(fdx * fmx) - 1;
-		y -= (int)(fdy * fmy) - 2;
+		x -= (int)(fdx * 1.0) - 0;
+		y -= (int)(fdy * 1.0) - 2;
+		if (x < 0) {
+			ob = true;
+			x = 0;
+		}
+		if (x * fmx >= vidinfo->outbuffer->outwidth) {
+			ob = true;
+			x = vidinfo->outbuffer->outwidth - 1;
+		}
+		if (y < 0) {
+			ob = true;
+			y = 0;
+		}
+		if (y * fmy >= vidinfo->outbuffer->outheight) {
+			ob = true;
+			y = vidinfo->outbuffer->outheight - 1;
+		}
 		x = coord_native_to_amiga_x(x);
 		if (y >= 0) {
 			y = coord_native_to_amiga_y(y) * 2;
-		}
-		if (x < 0 || y < 0 || x >= vidinfo->outbuffer->outwidth || y >= vidinfo->outbuffer->outheight) {
-			ob = true;
 		}
 	}
 	*xp = x;
@@ -3690,12 +3703,21 @@ static uae_u16 getjoystate (int joy)
 
 	v = (uae_u8)mouse_x[joy] | (mouse_y[joy] << 8);
 #if DONGLE_DEBUG
-	if (notinrom ())
+	if (M68K_GETPC < 0xe00000)
 		write_log (_T("JOY%dDAT %04X %s\n"), joy, v, debuginfo (0));
 #endif
 	if (inputdevice_logging & 2)
 		write_log (_T("JOY%dDAT=%04x %08x\n"), joy, v, M68K_GETPC);
 	return v;
+}
+
+void pulse_joydat(int joy, int xy, int dir)
+{
+	if (xy) {
+		mouse_y[joy] += dir;
+	} else {
+		mouse_x[joy] += dir;
+	}
 }
 
 uae_u16 JOY0DAT (void)
@@ -4467,7 +4489,7 @@ void POTGO (uae_u16 v)
 	if (inputdevice_logging & (16 | 128))
 		write_log (_T("POTGO_W: %04X %08X\n"), v, M68K_GETPC);
 #if DONGLE_DEBUG
-	if (notinrom ())
+	if (M68K_GETPC < 0xe00000)
 		write_log (_T("POTGO %04X %s\n"), v, debuginfo(0));
 #endif
 	dongle_potgo (v);
@@ -4498,7 +4520,7 @@ uae_u16 POTGOR (void)
 	v = handle_joystick_potgor (potgo_value) & 0x5500;
 	v = dongle_potgor (v);
 #if DONGLE_DEBUG
-	if (notinrom ())
+	if (M68K_GETPC < 0xe00000)
 		write_log (_T("POTGOR %04X %s\n"), v, debuginfo(0));
 #endif
 	if (inputdevice_logging & 16)
@@ -4594,7 +4616,7 @@ void inputdevice_add_inputcode (int code, int state, const TCHAR *s)
 			if (!inputdevice_handle_inputcode_immediate(code, state)) {
 				inputcode_pending[i].code = code;
 				inputcode_pending[i].state = state;
-				inputcode_pending[i].s = my_strdup(s);
+				inputcode_pending[i].s = s ? my_strdup(s) : NULL;
 			}
 			return;
 		}
@@ -5242,10 +5264,10 @@ void inputdevice_handle_inputcode(void)
 	for (int i = 0; i < MAX_PENDING_EVENTS; i++) {
 		int code = inputcode_pending[i].code;
 		int state = inputcode_pending[i].state;
-		const TCHAR *s = inputcode_pending[i].s;
+		TCHAR *s = inputcode_pending[i].s;
 		if (code) {
 			if (!inputdevice_handle_inputcode2(monid, code, state, s)) {
-				xfree(inputcode_pending[i].s);
+				xfree(s);
 				inputcode_pending[i].code = 0;
 			}
 			got = true;

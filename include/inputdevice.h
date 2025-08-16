@@ -291,6 +291,8 @@ extern uae_u16 JOY0DAT (void);
 extern uae_u16 JOY1DAT (void);
 extern void JOYSET (int num, uae_u16 v);
 extern uae_u16 JOYGET (int num);
+extern void pulse_joydat(int joy, int xy, int dir);
+
 
 extern void inputdevice_vsync (void);
 extern void inputdevice_hsync (bool);
@@ -389,6 +391,6 @@ bool osk_status(void);
 
 void inputdevice_draco_key(int kc);
 
-extern int key_swap_hack, key_swap_hack2;
+extern int key_swap_hack, key_swap_hack2, key_swap_end_pgup;
 
 #endif /* UAE_INPUTDEVICE_H */
