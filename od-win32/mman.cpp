@@ -2,8 +2,6 @@
 // Copyright (C) 2000, Brian King
 // GNU Public License
 
-#include <float.h>
-
 #include "sysconfig.h"
 #include "sysdeps.h"
 #include "options.h"
@@ -13,8 +11,6 @@
 #include "autoconf.h"
 #include "gfxboard.h"
 #include "cpuboard.h"
-#include "rommgr.h"
-#include "newcpu.h"
 #include "gui.h"
 #ifdef WINUAE
 #include "win32.h"

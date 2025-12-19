@@ -7,13 +7,10 @@
 */
 
 #include <winsock2.h>
-#include <Ws2tcpip.h>
 #include <Iphlpapi.h>
 
 #include "sysconfig.h"
 #include "sysdeps.h"
-
-#include <stdio.h>
 
 #define HAVE_REMOTE
 #define WPCAP
@@ -25,7 +22,6 @@
 #include "ntddndis.h"
 
 #include "options.h"
-#include "traps.h"
 #include "sana2.h"
 
 #include "threaddep/thread.h"

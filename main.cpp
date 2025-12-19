@@ -30,18 +30,14 @@
 #include "gui.h"
 #include "zfile.h"
 #include "autoconf.h"
-#include "picasso96.h"
 #include "native2amiga.h"
 #include "savestate.h"
-#include "filesys.h"
 #include "blkdev.h"
 #include "consolehook.h"
 #include "gfxboard.h"
 #ifdef WITH_LUA
 #include "luascript.h"
 #endif
-#include "uaenative.h"
-#include "tabletlibrary.h"
 #include "cpuboard.h"
 #ifdef WITH_PPC
 #include "uae/ppc.h"
@@ -487,8 +483,16 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 	}
 #endif
 
+	bool initial_monitor = false;
 	for (int i = 0; i < MAX_RTG_BOARDS; i++) {
 		struct rtgboardconfig *rbc = &p->rtgboards[i];
+		if (rbc->initial_active) {
+			if (initial_monitor) {
+				rbc->initial_active = false;
+				error_log(_T("Only one graphics card can be initial active."));
+			}
+			initial_monitor = true;
+		}
 		if (rbc->monitor_id > 0 && p->monitoremu_mon == rbc->monitor_id) {
 			error_log(_T("Video port monitor %d was allocated for graphics card %d."), rbc->monitor_id + 1, i + 1);
 			p->monitoremu_mon = 0;

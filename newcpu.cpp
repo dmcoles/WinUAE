@@ -26,7 +26,6 @@
 #include "memory.h"
 #include "custom.h"
 #include "newcpu.h"
-#include "disasm.h"
 #include "cpummu.h"
 #include "cpummu030.h"
 #include "cputbl.h"
@@ -39,8 +38,6 @@
 #include "savestate.h"
 #include "blitter.h"
 #include "ar.h"
-#include "gayle.h"
-#include "cia.h"
 #include "inputrecord.h"
 #include "inputdevice.h"
 #include "audio.h"
@@ -54,7 +51,6 @@
 #ifdef WITH_X86
 #include "x86.h"
 #endif
-#include "bsdsocket.h"
 #include "devices.h"
 #ifdef WITH_DRACO
 #include "draco.h"
@@ -98,6 +94,7 @@ int hardware_bus_error;
 static int baseclock;
 int m68k_pc_indirect;
 bool m68k_interrupt_delay;
+int slow_cpu_access;
 static bool m68k_accurate_ipl;
 static bool m68k_reset_delay;
 static bool ismoves_nommu;
@@ -2365,9 +2362,14 @@ void m68k_cancel_idle(void)
 
 static void m68k_set_stop(int stoptype)
 {
-	if (regs.stopped)
+	if (regs.stopped) {
 		return;
+	}
 	regs.stopped = stoptype;
+	if (regs.intmask == 7) {
+		gui_data.cpu_stopped = 1;
+		gui_led(LED_CPU, 0, -1);
+	}
 	if (cpu_last_stop_vpos >= 0) {
 		cpu_last_stop_vpos = vpos;
 	}
@@ -2376,6 +2378,10 @@ static void m68k_set_stop(int stoptype)
 static void m68k_unset_stop(void)
 {
 	regs.stopped = 0;
+	if (gui_data.cpu_stopped) {
+		gui_data.cpu_stopped = 0;
+		gui_led(LED_CPU, 0, -1);
+	}
 	if (cpu_last_stop_vpos >= 0) {
 		cpu_stopped_lines += vpos - cpu_last_stop_vpos;
 		cpu_last_stop_vpos = vpos;
@@ -3544,8 +3550,9 @@ void NMI (void)
 static void cpu_halt_clear(void)
 {
 	regs.halted = 0;
-	if (gui_data.cpu_halted) {
+	if (gui_data.cpu_halted || gui_data.cpu_stopped) {
 		gui_data.cpu_halted = 0;
+		gui_data.cpu_stopped = 0;
 		gui_led(LED_CPU, 0, -1);
 	}
 }
@@ -4768,6 +4775,16 @@ static int do_specialties (int cycles)
 #endif
 	}
 
+	if (spcflags & SPCFLAG_CPU_SLOW) {
+		evt_t c = get_cck_cycles();
+		int cnt = 0;
+		while(regs.spcflags == SPCFLAG_CPU_SLOW && c == get_cck_cycles()) {
+			x_do_cycles(4 * CYCLE_UNIT);
+			cnt++;
+		}
+		unset_special(SPCFLAG_CPU_SLOW);
+	}
+
 	if (spcflags & SPCFLAG_MMURESTART) {
 		// can't have interrupt when 040/060 CPU reruns faulted instruction
 		unset_special(SPCFLAG_MMURESTART);
@@ -5627,6 +5644,9 @@ static void m68k_run_jit(void)
 			// Without this it would have crashed in any case..
 			uaecptr pc = M68K_GETPC;
 			write_log(_T("Unhandled JIT exception! PC=%08x\n"), pc);
+#ifdef DEBUGGER
+			memory_map_dump();
+#endif
 			if (pc & 1)
 				Exception(3);
 			else

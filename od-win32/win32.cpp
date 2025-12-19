@@ -15,8 +15,6 @@
 #define KBHOOK 0
 
 #include <stdlib.h>
-#include <stdarg.h>
-#include <signal.h>
 
 #include "sysconfig.h"
 
@@ -26,19 +24,13 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <commctrl.h>
-#include <commdlg.h>
 #include <shellapi.h>
-#include <zmouse.h>
 #include <dbt.h>
-#include <math.h>
-#include <mmsystem.h>
 #include <shobjidl.h>
 #include <shlobj.h>
 #include <shlwapi.h>
 #include <dbghelp.h>
-#include <float.h>
 #include <WtsApi32.h>
-#include <Avrt.h>
 #include <Cfgmgr32.h>
 #include <shellscalingapi.h>
 #include <dinput.h>
@@ -58,24 +50,19 @@
 #include "memory.h"
 #include "rommgr.h"
 #include "custom.h"
-#include "events.h"
 #include "newcpu.h"
-#include "traps.h"
 #include "xwin.h"
 #include "keyboard.h"
 #include "inputdevice.h"
-#include "keybuf.h"
 #include "drawing.h"
 #include "render.h"
 #include "picasso96_win.h"
-#include "bsdsocket.h"
 #include "win32.h"
 #include "win32gfx.h"
 #include "registry.h"
 #include "win32gui.h"
 #include "autoconf.h"
 #include "gui.h"
-#include "uae/mman.h"
 #include "avioutput.h"
 #include "ahidsound.h"
 #include "ahidsound_new.h"
@@ -89,8 +76,6 @@
 #include "lcd.h"
 #include "uaeipc.h"
 #include "ar.h"
-#include "akiko.h"
-#include "cdtv.h"
 #include "direct3d.h"
 #include "clipboard_win32.h"
 #include "blkdev.h"
@@ -102,7 +87,6 @@
 #include "rp.h"
 #include "cloanto/RetroPlatformIPC.h"
 #endif
-#include "uae/ppc.h"
 #include "fsdb.h"
 #include "uae/time.h"
 #include "specialmonitors.h"
@@ -484,18 +468,20 @@ static int sleep_millis2 (int ms, bool main)
 	HANDLE sound_event = get_sound_event();
 	bool wasneg = ms < 0;
 	bool pullcheck = false;
+
 	int ret = 0;
 
 	if (ms < 0)
 		ms = -ms;
 	if (main) {
 		if (sound_event) {
-			bool pullcheck = audio_is_event_frame_possible(ms);
+			pullcheck = audio_is_event_frame_possible(ms);
 			if (pullcheck) {
 				if (WaitForSingleObject(sound_event, 0) == WAIT_OBJECT_0) {
 					if (wasneg) {
 						write_log(_T("efw %d imm abort\n"), ms);
 					}
+					audio_got_pull_event();
 					return -1;
 				}
 			}
@@ -537,10 +523,13 @@ static int sleep_millis2 (int ms, bool main)
 			evt[c++] = sound_event;
 		}
 		DWORD status = WaitForMultipleObjects(c, evt, FALSE, ms);
-		if (sound_event_cnt >= 0 && status == WAIT_OBJECT_0 + sound_event_cnt)
+		if (sound_event_cnt >= 0 && status == WAIT_OBJECT_0 + sound_event_cnt) {
 			ret = -1;
-		if (vblank_event_cnt >= 0 && status == WAIT_OBJECT_0 + vblank_event_cnt)
+			audio_got_pull_event();
+		}
+		if (vblank_event_cnt >= 0 && status == WAIT_OBJECT_0 + vblank_event_cnt) {
 			ret = -1;
+		}
 		if (wasneg) {
 			if (sound_event_cnt >= 0 && status == WAIT_OBJECT_0 + sound_event_cnt) {
 				write_log(_T("efw %d delayed abort\n"), ms);
@@ -743,6 +732,9 @@ bool setpaused(int priority)
 	//write_log (_T("pause %d (%d)\n"), priority, pause_emulation);
 	if (pause_emulation > priority)
 		return false;
+	if (!pause_emulation) {
+		wait_keyrelease();
+	}
 	pause_emulation = priority;
 	devices_pause();
 	setsoundpaused ();
@@ -2789,7 +2781,7 @@ static LRESULT CALLBACK AmigaWindowProc(HWND hWnd, UINT message, WPARAM wParam, 
 			{
 				LPNMMOUSE lpnm = (LPNMMOUSE)lParam;
 				int num = (int)lpnm->dwItemSpec;
-				int df0 = 9;
+				int df0 = 11;
 				if (num >= df0 && num <= df0 + 3) { // DF0-DF3
 					num -= df0;
 					if (nm->code == NM_RCLICK) {
@@ -2798,12 +2790,13 @@ static LRESULT CALLBACK AmigaWindowProc(HWND hWnd, UINT message, WPARAM wParam, 
 						DiskSelection(hWnd, IDC_DF0 + num, 0, &changed_prefs, NULL, NULL);
 						disk_insert(num, changed_prefs.floppyslots[num].df);
 					}
-				} else if (num == 5) {
-					if (nm->code == NM_CLICK) // POWER
+				} else if (num == 6) { // POWER
+					if (nm->code == NM_CLICK) {
 						inputdevice_add_inputcode(AKS_ENTERGUI, 1, NULL);
-					else
+					} else {
 						uae_reset(0, 1);
-				} else if (num == 4) {
+					}
+				} else if (num == 4) { // FPS
 					if (pause_emulation) {
 						resumepaused(9);
 						setmouseactive(mon->monitor_id, 1);
@@ -6574,6 +6567,7 @@ extern int logitech_lcd;
 extern uae_s64 max_avi_size;
 extern int floppy_writemode;
 extern int cia_timer_hack_adjust;
+extern int slow_cpu_access;
 
 extern DWORD_PTR cpu_affinity, cpu_paffinity;
 static DWORD_PTR original_affinity = -1;
@@ -6901,7 +6895,11 @@ static int parseargs(const TCHAR *argx, const TCHAR *np, const TCHAR *np2)
 		return 1;
 	}
 	if (!_tcscmp(arg, _T("forcerdtsc"))) {
-		uae_time_use_rdtsc(true);
+		uae_time_use_mode(1);
+		return 1;
+	}
+	if (!_tcscmp(arg, _T("forcetickcount"))) {
+		uae_time_use_mode(2);
 		return 1;
 	}
 	if (!_tcscmp(arg, _T("ddsoftwarecolorkey"))) {
@@ -7223,6 +7221,11 @@ static int parseargs(const TCHAR *argx, const TCHAR *np, const TCHAR *np2)
 		cia_timer_hack_adjust = getval(np);
 		return 2;
 	}
+	if (!_tcscmp(arg, _T("slow_cpu_access"))) {
+		slow_cpu_access = getval(np);
+		return 2;
+	}
+
 
 #endif
 	return 0;

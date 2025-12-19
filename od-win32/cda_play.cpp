@@ -14,13 +14,10 @@
 #include "sysdeps.h"
 
 #include "options.h"
-#include "render.h"
 #include "audio.h"
 #include "blkdev.h"
 #include "threaddep/thread.h"
 
-#include <dsound.h>
-#include <mmreg.h>
 #include <sys/timeb.h>
 
 #include "win32.h"
