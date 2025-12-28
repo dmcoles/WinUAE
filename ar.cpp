@@ -1746,7 +1746,14 @@ int action_replay_load (void)
 			arrom_start = 0x400000;
 			arrom_size = armodel == 2 ? 0x20000 : 0x40000;
 			arram_start = 0x440000;
-			arram_size = 0x10000;
+			if (!strncmp("ACTION REPLAY V ", (char*)armemory_rom + 4, 16))
+			{
+				arram_size = 0x100000;
+			}
+			else
+			{
+				arram_size = 0x10000;
+			}
 		}
 	}
 	arram_mask = arram_size - 1;
